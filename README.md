@@ -1,2 +1,2 @@
-# sql_antipatterns
-SQL Antipatterns
+# SQL Antipatterns
+
