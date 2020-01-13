@@ -8,11 +8,15 @@ When a column in a table has single value, the design is straightforward: choose
 But, how do we can store a collection of related values in a column?
 
 => We create a many-to-one (or one-to-many) relationship
+
 => But...
+
 => As our project matures, we realize that we need to support a many-to-may relationship instead of many-to-one relationship...
+
 => Holly sh**
 
 Example: 
+
 We might associate a product with a contact using an integer column. Each contact may have many products, so we create a many-to-one relationship between products and accounts. Then, we realize that we also need support a one-to-many relationship from products to accounts
 
 ### 2.2 Antipattern: Format Comma-Separated Lists
@@ -72,6 +76,7 @@ Some cases, **if the database was normalized**, this antipattern permits your ap
 
 ### 2.5 Solution: 
 Haha, we need **create an intersection table**
+
 That mean we implements a many-to-many relationship
 
 
