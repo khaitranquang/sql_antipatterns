@@ -39,7 +39,9 @@ This seems like the problem is resolved. But...
 #### Querying Products for a Special Account
 
 Queries are difficult:
-```SELECT * FROM Products WHERE account_id REGEXP '[[:<:]]12[[:>:]]';```
+```
+SELECT * FROM Products WHERE account_id REGEXP '[[:<:]]12[[:>:]]';
+```
 
 => SQL code is not vender-neutural
 
