@@ -1,12 +1,12 @@
-## Chap 3: Navie Trees
+## Chap 3: Naive Trees
 
 Suppose we need develop a comment feature. Readers can contribute comments and even reply to each other (like Reddit). We choose a simple solution to track these reply chains: Each comment references the comment to which it replies:
 ```
 CREATE TABLE Comments (
-comment_id SERIAL PRIMARY KEY,
-parent_id BIGINT UNSIGNED,
-comment TEXT NOT NULL,
-FOREIGN KEY (parent_id) REFERENCES Comments(comment_id)
+    comment_id SERIAL PRIMARY KEY,
+    parent_id BIGINT UNSIGNED,
+    comment TEXT NOT NULL,
+    FOREIGN KEY (parent_id) REFERENCES Comments(comment_id)
 );
 ```
 
@@ -16,11 +16,24 @@ The other idea we have is to retrieve *all* comments and assemble them in to tre
 
 => We need find the better way to store the threads of comments simply and efficiently.
 
-### 3.1 Object: Store and Query Hierachies
-It is common for data to have recursive relationships. Data may be organized in a treelike or hierachical way.
+### 3.1 Object: Store and Query Hierarchies
+It is common for data to have recursive relationships. Data may be organized in a treelike or hierarchical way.
 
-### 3.2 Antipattern: Always depend on one's parrent
-The naive solution commonly is to add a colummn *parent_id*. This colummn references another comment in the same table. This design is called *Adjacency List*.
+### 3.2 Antipattern: Always depend on one's parent
+The naive solution commonly is to add a column *parent_id*. This column references another comment in the same table. This design is called *Adjacency List*. It's probably the most common design software developers use to store hierarchical data.
+
+Example data:
+
+| comment_id | parent_id | author | comment |
+|------------|-----------|--------|---------|
+| 1 | NULL | Fran | What is the cause of this bug? |
+| 2 | 1 | Ollie | I think it is a null pointer |
+| 3 | 2 | Fran | No. I checked for that |
+| 4 | 1 | Kukla | We need to check for valid input |
+| 5 | 4 | Ollie | Yes. That is a bug. |
+| 6 | 4 | Fran | yes, please add a check |
+| 7 | 6 | Kukla | That fixed it |
+
 
 There are some issues:
 #### Query a Tree with Adjacency List
@@ -33,7 +46,7 @@ ON c2.parent_id = c1.comment_id;
 => Only two levels of the tree
 
 To extend to any depth, we need compute the COUNT() of comments in the thread or the SUM() of the cost of parts in mechanical assembly.
-=> The number of joins in an SQL query musst be fixed:
+=> The number of joins in an SQL query must be fixed:
 ```
 SELECT c1.*, c2.*, c3.*, c4.*
 	FROM Comments c1 					-- 1st level
@@ -62,9 +75,9 @@ in the trees.”
 
 ### 3.4 Legitimate Uses of the Antipattern
 
-The strength of Adjacency List design is retrieving the direct parent or child of a given node. It is also easy to insert rows. If those operators are all we need to do with our hierachical data, then Adjacency List can work well for us.
+The strength of Adjacency List design is retrieving the direct parent or child of a given node. It is also easy to insert rows. If those operators are all we need to do with our hierarchical data, then Adjacency List can work well for us.
 
-Some brands of RDBMS support extensions to SQL to support hierachical stored in Adjacency List format: Microsoft SQL Server 2005, Oracle 11g, IBM DB2, and PostgreSQL 8.4.
+Some brands of RDBMS support extensions to SQL to support hierarchical stored in Adjacency List format. Microsoft SQL Server 2005, Oracle 11g, IBM DB2, and PostgreSQL 8.4 support **recursive queries** using common table expressions, as shown earlier.
 ```
 WITH CommentTree
 	(comment_id, bug_id, parent_id, author, comment, depth)
@@ -81,25 +94,24 @@ MySQL, SQLite, and Informix are examples of database brands that don't support t
 
 ### 3.5 Solution: Use Alternative Tree Models
 
-There are several alternatives to the Adjacency List model of storing hierachical data, including *Path Enumeration, Nested Sets, Closure Table*
+There are several alternatives to the Adjacency List model of storing hierarchical data, including *Path Enumeration, Nested Sets, Closure Table*
 
 #### Path Enumeration
-One weakness of Adjacency List is that it is expensive to retrieve ancestors of a given node in the tree. In Path Enumeration, this is solved by storing the string of ancestors as an atrribute of each node.
+One weakness of Adjacency List is that it is expensive to retrieve ancestors of a given node in the tree. In Path Enumeration, this is solved by storing the string of ancestors as an attribute of each node.
 
-We can see a form of Path Enumeration in directory hierachies.
+We can see a form of Path Enumeration in directory hierarchies.
 
-In *Comments* table, instead of the parent_id colummn, define a colummn called *path* as a long *VARCHAR*. The string stored in this colummn is sequence of ancestors of the current row in order from the top of the tree down, just like UNIX path. We can choose / as a separator character.
-```
-comment_id 	path 		author 		comment
-------------------------------------------------------------------------
-1 			1/ 			Fran 		What’s the cause of this bug?
-2 			1/2/ 		Ollie 		I think it’s a null pointer.
-3 			1/2/3/ 		Fran 		No, I checked for that.
-4 			1/4/ 		Kukla 		We need to check for invalid input.
-5 			1/4/5/ 		Ollie 		Yes, that’s a bug.
-6 			1/4/6/ 		Fran 		Yes, please add a check.
-7 			1/4/6/7/ 	Kukla 		That fixed it
-```
+In *Comments* table, instead of the parent_id column, define a column called *path* as a long *VARCHAR*. The string stored in this column is sequence of ancestors of the current row in order from the top of the tree down, just like UNIX path. We can choose / as a separator character.
+
+| comment_id | path | author | comment|
+|------------|------|--------|--------|
+| 1 | 1/ | Fran | What’s the cause of this bug?|
+| 2 | 1/2/ | Ollie | I think it’s a null pointer. |
+| 3 | 1/2/3/ | Fran | No, I checked for that. |
+| 4 | 1/4/ | Kukla | We need to check for invalid input. |
+| 5 | 1/4/5/ | Ollie | Yes, that’s a bug.|
+| 6 | 1/4/6/ | Fran | Yes, please add a check.|
+| 7 | 1/4/6/7/ | Kukla | That fixed it|
 
 We can query ancestors by comparing the current row's path to a pattern formed from the path of another row. For example, to find ancestors of comment #7, whose path is *1/4/6/7*, do this:
 ```
