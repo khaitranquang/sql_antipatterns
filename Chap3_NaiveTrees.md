@@ -127,21 +127,126 @@ This matches the patterns formed from paths of ancestors *1/4/6/%, 1/4/%, 1/%*
 
 Each node is given *nsleft* and *nsright* numbers in the following way: the *nsleft* number is less than the numbers of all node's children, whereas the *nsright* is greater than the numbers of all the node's children. These numbers have no relation to comment_id value.
 
+An easy way to assign these values is by following a depth-first traversal of the tree, assigning *nsleft* numbers incrementally as you descend a branch of the tree and assigning *nsright* numbers as you ascend back up the branch.
+
+| comment_id | nsleft | nsright | author | comment|
+|------------|--------|---------|--------|--------|
+| 1 | 1 | 14 | Fran | What’s the cause of this bug?|
+| 2 | 2 | 5 | Ollie | I think it’s a null pointer. |
+| 3 | 3 | 4 | Fran | No, I checked for that. |
+| 4 | 6 | 13 | Kukla | We need to check for invalid input. |
+| 5 | 7 | 8 | Ollie | Yes, that’s a bug.|
+| 6 | 9 | 12 | Fran | Yes, please add a check.|
+| 7 | 10 | 11 | Kukla | That fixed it|
+
+Once we have assigned each node with these numbers, we can use them to find ancestors and descendants of any given node. For example, we can retrieve comment #14 and its descendants by searching for node whose numbers are between the current node's nsleft and nsright
+
+```
+SELECT c2.*
+FROM Comments AS c1
+    JOIN Comments as c2
+        ON c2.nsleft BETWEEN c1.nsleft AND c1.nsright
+WHERE c1.comment_id = 4;
+```
+
+One chief strength of the Nested Sets design is that when we delete a nonleaf node, its descendants are automatically considered direct children of the deleted node's parents.
+
+However, some queries that are simple in the Adjacency List design, such as retrieving the immediate child or immediate parent, are more complex in the Nested Sets design.
+
+For example, to find the immediate parent of comment #6, do this:
+```
+SELECT parent.*
+FROM Comment AS c
+    JOIN Comment AS parent
+        ON c.nsleft BETWEEN parent.nsleft AND parent.nsright
+    LEFT OUTER JOIN Comment AS in_between
+        ON c.nsleft BETWEEN in_between.nsleft AND in_between.nsright
+        AND in_between.nsleft BETWEEN parent.nsleft AND parent.nsright
+WHERE c.comment_id = 6
+    AND in_between.comment_id IS NULL;
+```
+
+Manipulations of the tree, inserting and moving nodes, are generally more complex in Nested Sets design than they are in other models. When you insert a new node, you need to recalculate all the left and right values greater than the left value of the new node.
+
+The Nested Sets model is best when it’s more important to perform queries for subtrees quickly and easily, rather than operations on individual nodes. Inserting and moving nodes is complex, because of the requirement to renumber the left and right values. If your usage of the tree involves frequent insertions, Nested Sets isn’t the best choice.
+
+#### Closure Table
+
+The Closure Table solution is a simple and elegant way of storing hierarchies. It involves storing all paths through the tree, not just those with a direct parent-child relationship.
+
+In addition to a plain Comments table, create another table TreePaths, with two columns, each of which is a foreign key to the Comments table.
+
+```
+CREATE TABLE Comments (
+    comment_id  SERIAL PRIMARY KEY,
+    bug_id BIGINT UNSIGNED NOT NULL,
+    author BIGINT UNSIGNED NOT NULL,
+    comment_date DATETIME NOT NULL,
+    comment TEXT NOT NULL,
+    FOREIGN KEY (bug_id) REFERENCES Bugs(bug_id),
+    FOREIGN KEY (author) REFERENCES Accounts(account_id)
+);
+
+CREATE TABLE TreePaths (
+    ancestor BIGINT UNSIGNED NOT NULL,
+    descendant BIGINT UNSIGNED NOT NULL,
+    PRIMARY KEY(ancestor, descendant),
+    FOREIGN KEY (ancestor) REFERENCES Comments(comment_id),
+    FOREIGN KEY (descendant) REFERENCES Comments(comment_id)
+);
+```
+
+Instead of using the Comments table to store information about the tree structure, use the TreePaths table. Store one row in this table for each pair of nodes in the tree that shares an ancestor/descendant relationship, even if they are separated by multiple levels in the tree. Also add a row for each node to reference itself.
+
+| ancestor | descendant | ancestor | descendant | ancestor| descendant|
+|------------|--------|---------|--------|--------|-------------|
+| 1 | 1 | 1 | 7 | 4 | 6 |
+| 1 | 2 | 2 | 2 | 4 | 7|
+| 1 | 3 | 2 | 3 | 5 | 5 |
+| 1 | 4 | 3 | 3 | 6 | 6 |
+| 1 | 5 | 4 | 4 | 6 | 7 |
+| 1 | 6 | 4 | 5 | 7 | 7 |
+
+The queries to retrieve ancestors and descendants from this table are even more straightforward than those in the Nested Sets solution. To retrieve descendants of comment #4, match rows in TreePaths where the ancestor is 4:
+```
+SELECT c.*
+FROM Comments AS c
+JOIN TreePaths AS t ON c.comment_id = t.descendant
+WHERE t.ancestor = 4;
+```
+
+To insert a new leaf node, for instance a new child of comment #5, first insert the self-referencing row. Then add a copy of the set of rows in TreePaths that reference comment #5 as a descendant (including the row in which comment #5 references itself), replacing the descendant with the number of the new comment:
+
+```
+INSERT INTO TreePaths (ancestor, descendant)
+    SELECT t.ancestor, 8
+    FROM TreePaths AS t
+    WHERE t.descendant = 5
+UNION ALL
+    SELECT 8, 8;
+```
+To delete a leaf node, for instance comment #7, delete all rows in TreePaths that reference comment #7 as a descendant :
+```
+DELETE FROM TreePaths WHERE descendant = 7;
+```
+
+Notice that if you delete rows in TreePaths , this doesn’t delete the comments themselves.
 
 
+#### Which Design Should You Use?
 
+| Design | Tables | Query Child | Query Tree | Insert| Delete | Ref. Integ.|
+|------------|--------|---------|--------|--------|-------------|-----------|
+| Adjacency List   | 1 | Easy | Hard | Easy | Easy | Yes |
+| Recursive Query  | 1 | Easy | Easy | Easy | Easy | Yes |
+| Path Enumeration | 1 | Easy | Easy | Easy | Easy | No |
+| Nested Sets      | 1 | Hard | Easy | Hard | Hard | No |
+| Closure Table    | 2 | Easy | Easy | Easy | Easy | Yes |
 
+Each of the designs has its own strengths and weaknesses. Choose the design depending on which operations we need to be most efficient.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+* *Adjacency List* is the most conventional design, and many software developers recognize it.
+* *Recursive Queries* using WITH or CONNECT BY PRIOR make it more efficient to use the Adjacency List design, provided you use one of the database brands that supports the syntax.
+* *Path Enumeration* is good for breadcrumbs in user interfaces, but it’s fragile because it fails to enforce referential integrity and stores information redundantly.
+* *Nested Sets* is a clever solution—maybe too clever. It also fails to support referential integrity. It’s best used when we need to query a tree more frequently than we need to modify the tree.
+* *Closure Table* is the most versatile design and the only design in this chapter that could allow a node to belong to multiple trees. It requires an additional table to store the relationships. This design also uses a lot of rows when encoding deep hierarchies, increasing space consumption as a trade-off for reducing computing.
