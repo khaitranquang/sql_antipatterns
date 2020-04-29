@@ -102,5 +102,38 @@ SQL also supports a more concise suntax for expressing a join between two tables
 SELECT * FROM Bugs JOIN BugsProducts USING (bug_id);
 ```
 
-However, if all tables are required to define a pseudokey primary key name *id*, then a foreign key column in a dependent table can never using the same name as the primary key it references. Instaed, 
+However, if all tables are required to define a pseudokey primary key name *id*, then a foreign key column in a dependent table can never using the same name as the primary key it references. Instead, we must always use the more verbose ON syntax.
+
+#### Compound Keys Are Hard
+
+Some developers refuse to use compound keys because they say these keys are too hard to use.
+
+### 4.3 How to recognize the Antipattern
+
+The symptom of this antipattern is easy to recognize: tables use the overly generic name *id* for the primary key.
+
+### 4.4 Legitimate Uses of the Antipattern
+
+Some objet-relational frameworks simpplify development by assuming *convention over configuration*. Thay expect every table to define its primary key in the same way: as an integer pseudokey column name *id*. If you use such a frameworks, you may want to conform to its conventions, because this gives you access to other desirable features of the frameworks.
+
+### 4.5 Solution: Tailored to Fits
+
+A primary key is a constraint, not a data type. We can declare a primary key on an column or set of columns, as long as the data types support indexing. We should also be able to define a column as an auto-incrementing integer without making it the primary key of the table. The two concepts are independent.
+
+#### Tell it like it
+
+Choose sensible names for your primary key. For example, the primary key of the *Bugs* table should be *bug_id*
+
+#### Be Unconventional
+
+Object-relational frameworks expect us to use a pseudokey name *id*, by they also allow us ti override this and declare a different name instead.
+
+#### Embrace Natural Keys and Compound Keys
+
+
+
+
+
+
+
 
